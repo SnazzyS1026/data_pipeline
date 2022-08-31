@@ -47,7 +47,7 @@ dataset = (
 @st.cache(persist=True)
 def load_data(nrows):
     df = pd.read_csv(data, nrows=nrows)
-    Drop N/A values in latitude and longitude so it doesn't fail when we use map
+    #Drop N/A values in latitude and longitude so it doesn't fail when we use map
     df.dropna(subset=['Latitude', 'Longitude'], inplace=True)
     lowercase = lambda x: str(x).lower()
     df.rename(lowercase, axis='columns', inplace=True)
