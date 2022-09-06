@@ -1,4 +1,12 @@
 
+"""
+
+To run this app:
+1. cd into this directory
+2. Run `streamlit run cv_mortality_app.py`
+
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,7 +18,8 @@ import plotly.graph_objects as go
 ######################################################
 
 st.set_page_config(
-    page_title="Hypertensive-Related Cardiovascular Disease Mortality Trends"
+    page_title="Hypertensive-Related Cardiovascular Disease Mortality Trends",
+    # layout='wide'
 )
 
 st.title('''
@@ -38,11 +47,12 @@ The strongest risk factor for CVD is hypertension, or high blood pressure. Acute
 ''')
 
 st.write('''
-###### Explore the following graphs and map to see the trends in hypertension-related CVD mortality among US adults recorded by the Centers for Disease and Control Prevention (CDC) from 2000 to 2019.
+##### Explore the following graphs and map to see the trends in hypertension-related CVD mortality among US adults recorded by the Centers for Disease and Control Prevention (CDC) from 2000 to 2019.
 ''')
 #####################################################################
 
 # Load data and store in local cache
+
 @st.cache(allow_output_mutation=True)
 def load_data(path, compression, encoding):
     data = pd.read_csv(path)
@@ -51,12 +61,15 @@ def load_data(path, compression, encoding):
 
 df = load_data('cv_mortality.gz', compression='gzip', encoding='utf-8')
 
-st.markdown('''
-#### Sample Dataset
-''')
+by_state = load_data('groupby_state.csv', compression='none', encoding='utf-8')
+
+by_county = load_data('county_2019.csv', compression='none', encoding='utf-8')
 
 #############################################
 
+st.markdown('''
+#### Sample Dataset
+''')
 
 # Display an interactive table
 st.dataframe(df.sample(n=8))
@@ -106,14 +119,66 @@ else:
 
     #Group by Race/Ethnicity
     race = df[df['Race_Ethnicity']!='Overall']
-    race_filter = race.groupby('Race_Ethnicity')['Data_Value'].sum()
-    race_groups = ['White', 'Black', 'Hispanic', 'Asian and Pacific Islander', 'American Indian and Alaska Native']
+    race_filter = race.groupby('Race_Ethnicity')['Data_Value'].mean()
+    race_groups = ['American Indian and Alaska Native', 'Asian and Pacific Islander', 'Black', 'Hispanic', 'White']
     colors_list3 =['CadetBlue', 'Crimson', 'Cornsilk', 'DarkGray', 'DarkSalmon']
-    explode_val3 = (0.1, 0.1, 0.1, 0.1, 0.1)
+    explode_val3 = (0.05, 0.05, 0.05, 0.05, 0.05)
 
     pie_race = plt.figure(figsize=(5,5))
     plt.pie(race_filter, labels=race_groups, autopct='%1.1f%%', explode = explode_val3, colors=colors_list3, textprops={'fontsize': 12})
     st.pyplot(pie_race)
+
+####################################################################
+
+# CHLOROPETH MAP
+
+st.write('''
+#### CVD Mortality by County
+'''
+)
+
+# Create US Map
+by_county['text'] = by_county['County'] + ", " + by_county['State'] + " " +  (by_county['Data_Value']).astype(str)+' cases per 100,000'
+limits = [(0,100),(101,300),(301,600),(601,1000),(1001,1500), (1501, 3000)]
+colors = ["#E34234","#CD5C5C","#FF0000", "#FF1C00", "#FF6961", "#F4C2C2"]
+cities = []
+scale = 5000
+
+fig = go.Figure()
+
+for i in range(len(limits)):
+    lim = limits[i]
+    df_sub = by_county[lim[0]:lim[1]]
+    fig.add_trace(go.Scattergeo(
+        locationmode = 'USA-states',
+        lon = df_sub['lon'],
+        lat = df_sub['lat'],
+        text = df_sub['text'],
+        marker = dict(
+            size = df_sub['Data_Value']*0.2,
+            color = colors[i],
+            line_color='rgb(40,40,40)',
+            line_width=0.5,
+            sizemode = 'area'
+            
+        ),
+        name = '{0} - {1}'.format(lim[0],lim[1])))
+
+
+fig.update_layout(
+        title_text = '(Click legend to toggle cases)',
+        title_font_size=20,
+        title_x=0.5,
+        showlegend = True,
+        legend_title_text='<b>Cases per 100,000</b>',
+        font=dict(size=12),
+        geo = dict(
+            scope = 'usa',
+            landcolor = 'rgb(217, 217, 217)',
+            projection=go.layout.geo.Projection(type = 'albers usa')
+        )
+    )
+st.plotly_chart(fig)
 
 ##############################################################
 
@@ -125,23 +190,50 @@ st.write('''
 '''
 )
 
-df3 = pd.read_csv('groupby_state.csv', encoding='utf-8')
-
 # Make option bar
-state_option = df3['State'].unique().tolist()
+state_option = by_state['State'].unique().tolist()
 
-state = st.multiselect('Which state(s) would you like to see?', state_option, ['AL', 'CA', 'MS', 'OK', 'WY'])
+state = st.multiselect('Which state(s) would you like to see?', state_option, ['AL', 'AR', 'CA', 'FL', 'MS', 'NE', 'NY', 'OH', 'OK', 'OR', 'TX', 'WY'])
 
-df3 = df3[df3['State'].isin(state)]
+by_state = by_state[by_state['State'].isin(state)]
 
 # Figure
-fig3 = px.bar(df3, x='State', y=df3['AVG(Data_Value)'], hover_name = df3['AVG(Data_Value)'], 
-            range_y= [0,400], animation_frame='Year', animation_group='State', 
-            barmode='group').update_layout(xaxis_title='States', yaxis_title='Average Cases per 100,000')
+fig3 = px.bar(by_state, x='State', y=by_state['AVG(Data_Value)'], 
+            hover_name = by_state['AVG(Data_Value)'], 
+            range_y= [0,550], 
+            animation_frame='Year', 
+            animation_group='State', 
+            barmode='group').update_layout(xaxis_title='<b>States</b>', 
+                                        yaxis_title='<b>Average Cases per 100,000<b>'
+                                        )
+fig3.update_xaxes(title_font=dict(size=15))
+fig3.update_yaxes(title_font=dict(size=15))
 
 st.write(fig3)
 
-####################################################################
+############################################################################## 
+
+# Add spaces between charts and references
+
+st.text("")
+st.text("")
+st.text("")
+st.text("")
+
+##############################################################################
+
+# References
+
+st.write('''
+##### References
+1. https://www.who.int/news-room/fact-sheets/detail/cardiovascular-diseases-(cvds)
+2. https://www.statista.com/topics/3484/cardiovascular-disease-in-the-us/#dossierContents__outerWrapper
+3. Dataset: https://chronicdata.cdc.gov/Heart-Disease-Stroke-Prevention/Rates-and-Trends-in-Hypertension-related-Cardiovas/uc9k-vc2j
+'''
+)
+
+################################################################################
+
 
 # def barplot_by_year(year_input):
 #     fig_year = df3[df3['Year']==year_input]
@@ -176,53 +268,3 @@ st.write(fig3)
 # barplot_by_year(year_input)
 
 ############################################################
-# INTERACTIVE MAP
-
-# Read in csv file
-df4 = pd.read_csv('county_2019.csv', encoding='utf-8')
-
-st.write('''
-#### CVD Mortality by County
-'''
-)
-
-# Create US Map
-df4['text'] = df4['County'] + ", " + df4['State'] + " " +  (df4['Data_Value']).astype(str)+' cases per 100,000'
-limits = [(0,100),(101,300),(301,600),(601,1000),(1001,1500), (1501, 3000)]
-colors = ["#E34234","#CD5C5C","#FF0000", "#FF1C00", "#FF6961", "#F4C2C2"]
-cities = []
-scale = 5000
-
-fig = go.Figure()
-
-for i in range(len(limits)):
-    lim = limits[i]
-    df_sub = df4[lim[0]:lim[1]]
-    fig.add_trace(go.Scattergeo(
-        locationmode = 'USA-states',
-        lon = df_sub['lon'],
-        lat = df_sub['lat'],
-        text = df_sub['text'],
-        marker = dict(
-            size = df_sub['Data_Value']*0.2,
-            color = colors[i],
-            line_color='rgb(40,40,40)',
-            line_width=0.5,
-            sizemode = 'area'
-            
-        ),
-        name = '{0} - {1}'.format(lim[0],lim[1])))
-
-
-fig.update_layout(
-        title_text = '(Click legend to toggle cases)',
-        title_font_size=20,
-        title_x=0.5,
-        showlegend = True,
-        geo = dict(
-            scope = 'usa',
-            landcolor = 'rgb(217, 217, 217)',
-            projection=go.layout.geo.Projection(type = 'albers usa')
-        )
-    )
-st.plotly_chart(fig)
