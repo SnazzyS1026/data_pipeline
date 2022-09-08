@@ -11,3 +11,5 @@ plotly== 5.10.0
 sqlalchemy==1.4.40
 
 streamlit==1.12.0
+
+seaborn==0.11.2
